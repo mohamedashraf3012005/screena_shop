@@ -1,0 +1,30 @@
+class AppRoutes {
+  static const String login = '/login';
+  static const String dashboard = '/';
+  static const String products = '/products';
+  static const String productAdd = '/products/add';
+  static const String productEdit = '/products/:id/edit';
+  static const String categories = '/categories';
+  static const String customers = '/customers';
+  static const String customerAdd = '/customers/add';
+  static const String customerEdit = '/customers/:id/edit';
+  static const String customerDetail = '/customers/:id';
+  static const String suppliers = '/suppliers';
+  static const String supplierAdd = '/suppliers/add';
+  static const String supplierEdit = '/suppliers/:id/edit';
+  static const String supplierDetail = '/suppliers/:id';
+  static const String sales = '/sales';
+  static const String pos = '/pos';
+  static const String saleDetail = '/sales/:id';
+  static const String purchases = '/purchases';
+  static const String purchaseAdd = '/purchases/add';
+  static const String purchaseDetail = '/purchases/:id';
+  static const String inventory = '/inventory';
+  static const String stockAdjustment = '/inventory/adjustment';
+  static const String stockDamage = '/inventory/damage';
+  static const String treasury = '/treasury';
+  static const String expenses = '/expenses';
+  static const String reports = '/reports';
+  static const String settings = '/settings';
+  static const String users = '/users';
+}
