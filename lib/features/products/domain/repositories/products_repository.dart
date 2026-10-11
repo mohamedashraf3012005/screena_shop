@@ -5,9 +5,9 @@ abstract class ProductsRepository {
     String? search,
     int? categoryId,
     int? typeId,
-    String? status,
-    int page,
-    int pageSize,
+    String? status = 'active',
+    int page = 1,
+    int pageSize = 50,
   });
 
   Future<ProductEntity?> getById(int id);

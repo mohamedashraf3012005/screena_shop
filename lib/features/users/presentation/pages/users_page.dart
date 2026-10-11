@@ -133,6 +133,122 @@ class _UsersPageState extends State<UsersPage> {
     _loadUsers();
   }
 
+  Future<void> _showEditUserDialog(User user) async {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController(text: user.fullName);
+    final passwordController = TextEditingController();
+    String selectedRole = user.role;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text('تعديل المستخدم: ${user.fullName}'),
+          content: SizedBox(
+            width: 440,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('اسم الدخول: ${user.username}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: nameController,
+                    decoration: const InputDecoration(labelText: 'الاسم الكامل *', border: OutlineInputBorder()),
+                    validator: (v) => v!.isEmpty ? 'مطلوب' : null,
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedRole,
+                    decoration: const InputDecoration(labelText: 'الصلاحية / الدور *', border: OutlineInputBorder()),
+                    items: const [
+                      DropdownMenuItem(value: 'admin', child: Text('مدير عام (كامل الصلاحيات والإدارة)')),
+                      DropdownMenuItem(value: 'cashier', child: Text('كاشير (نقطة البيع والمبيعات فقط)')),
+                      DropdownMenuItem(value: 'finance', child: Text('محاسب (الخزينة والمصروفات والتقارير)')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => selectedRole = val);
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: passwordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'كلمة مرور جديدة (اتركها فارغة إن لم ترغب في التغيير)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+            ElevatedButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+
+                drift.Value<String> passVal = const drift.Value.absent();
+                if (passwordController.text.trim().isNotEmpty) {
+                  passVal = drift.Value(_hashPassword(passwordController.text.trim()));
+                }
+
+                await (_db.update(_db.users)..where((u) => u.id.equals(user.id))).write(
+                  UsersCompanion(
+                    fullName: drift.Value(nameController.text.trim()),
+                    role: drift.Value(selectedRole),
+                    passwordHash: passVal,
+                  ),
+                );
+
+                if (mounted) {
+                  Navigator.pop(ctx);
+                  _loadUsers();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تم تحديث بيانات المستخدم بنجاح'), backgroundColor: AppTheme.success),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+              child: const Text('حفظ التعديلات'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteUser(User user) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف المستخدم'),
+        content: Text('هل أنت متأكد من حذف المستخدم "${user.fullName}" (${user.username})؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            child: const Text('حذف نهائي'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await (_db.delete(_db.users)..where((u) => u.id.equals(user.id))).go();
+      _loadUsers();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم حذف المستخدم بنجاح'), backgroundColor: AppTheme.success),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -251,11 +367,26 @@ class _UsersPageState extends State<UsersPage> {
                                       Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          if (u.username != 'admin')
-                                            TextButton(
+                                          IconButton(
+                                            icon: const Icon(Icons.edit_outlined, size: 18),
+                                            tooltip: 'تعديل الصلاحية والبيانات',
+                                            color: AppTheme.primary,
+                                            onPressed: () => _showEditUserDialog(u),
+                                          ),
+                                          if (u.username != 'admin') ...[
+                                            IconButton(
+                                              icon: Icon(u.isActive ? Icons.block : Icons.check_circle_outline, size: 18),
+                                              tooltip: u.isActive ? 'تعطيل الحساب' : 'تفعيل الحساب',
+                                              color: u.isActive ? AppTheme.warning : AppTheme.success,
                                               onPressed: () => _toggleUserActive(u),
-                                              child: Text(u.isActive ? 'تعطيل' : 'تفعيل'),
                                             ),
+                                            IconButton(
+                                              icon: const Icon(Icons.delete_outline, size: 18),
+                                              tooltip: 'حذف المستخدم',
+                                              color: AppTheme.error,
+                                              onPressed: () => _deleteUser(u),
+                                            ),
+                                          ],
                                         ],
                                       ),
                                     ),

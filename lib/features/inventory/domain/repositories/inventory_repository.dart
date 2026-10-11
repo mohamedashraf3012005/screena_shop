@@ -19,4 +19,12 @@ abstract class InventoryRepository {
   });
   Future<bool> approveAdjustment(int adjustmentId);
   Future<List<ProductEntity>> getLowStockProducts();
+  Future<bool> manualStockAdjustment({
+    required int productId,
+    required double quantityDelta,
+    required String reason,
+    String? notes,
+    int? userId,
+    double? newCostPrice,
+  });
 }

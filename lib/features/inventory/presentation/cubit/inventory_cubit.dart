@@ -184,4 +184,32 @@ class InventoryCubit extends Cubit<InventoryState> {
       return false;
     }
   }
+
+  Future<bool> manualStockAdjustment({
+    required int productId,
+    required double quantityDelta,
+    required String reason,
+    String? notes,
+    int? userId,
+    double? newCostPrice,
+  }) async {
+    try {
+      final success = await _repository.manualStockAdjustment(
+        productId: productId,
+        quantityDelta: quantityDelta,
+        reason: reason,
+        notes: notes,
+        userId: userId,
+        newCostPrice: newCostPrice,
+      );
+      if (success) {
+        await loadInventoryData();
+      }
+      return success;
+    } catch (e) {
+      emit(InventoryError('حدث خطأ أثناء تعديل المخزون يدوياً'));
+      return false;
+    }
+  }
 }
+

@@ -46,4 +46,22 @@ class InventoryRepositoryImpl implements InventoryRepository {
 
   @override
   Future<List<ProductEntity>> getLowStockProducts() => _datasource.getLowStockProducts();
+
+  @override
+  Future<bool> manualStockAdjustment({
+    required int productId,
+    required double quantityDelta,
+    required String reason,
+    String? notes,
+    int? userId,
+    double? newCostPrice,
+  }) =>
+      _datasource.manualStockAdjustment(
+        productId: productId,
+        quantityDelta: quantityDelta,
+        reason: reason,
+        notes: notes,
+        userId: userId,
+        newCostPrice: newCostPrice,
+      );
 }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
@@ -626,4 +628,96 @@ class AppDatabase extends _$AppDatabase {
     ).getSingle();
     return result.read<double>('value');
   }
+
+  // ─────────────────────────────────────────────
+  // التحقق من كلمة مرور المدير
+  // ─────────────────────────────────────────────
+  Future<bool> verifyAdminPassword(String password) async {
+    final hash = sha256.convert(utf8.encode(password)).toString();
+    final admin = await (select(users)
+          ..where((u) =>
+              u.role.equals('admin') &
+              u.passwordHash.equals(hash) &
+              u.isActive.equals(true)))
+        .getSingleOrNull();
+    return admin != null;
+  }
+
+  // ─────────────────────────────────────────────
+  // ترجيع الكل كما كان (إعادة ضبط المصنع بالكامل وتصفير النظام)
+  // ─────────────────────────────────────────────
+  Future<void> factoryReset() async {
+    await transaction(() async {
+      // 1. تفريغ المبيعات وتفاصيلها
+      await delete(saleItems).go();
+      await delete(sales).go();
+
+      // 2. تفريغ المشتريات وتفاصيلها
+      await delete(purchaseItems).go();
+      await delete(purchases).go();
+
+      // 3. تفريغ المرتجعات وتفاصيلها
+      await delete(returnItems).go();
+      await delete(returns).go();
+
+      // 4. تفريغ الجرد والهالك وحركات المخزون
+      await delete(stockAdjustmentItems).go();
+      await delete(stockAdjustments).go();
+      await delete(stockDamages).go();
+      await delete(inventoryMovements).go();
+
+      // 5. تصفير الخزينة وجلسات الصندوق
+      await delete(cashTransactions).go();
+      await delete(cashSessions).go();
+
+      // 6. تفريغ المصروفات
+      await delete(expenses).go();
+
+      // 7. تفريغ العملاء ومعاملاتهم
+      await delete(customerTransactions).go();
+      await delete(customers).go();
+
+      // 8. تفريغ الموردين ومعاملاتهم
+      await delete(supplierTransactions).go();
+      await delete(suppliers).go();
+
+      // 9. تفريغ المنتجات والأنواع
+      await delete(products).go();
+      await delete(productTypes).go();
+
+      // 10. تفريغ سجل العمليات
+      await delete(auditLogs).go();
+
+      // 11. إعادة التصنيفات الافتراضية
+      await delete(categories).go();
+      final defaultCategories = [
+        'مشروبات',
+        'مواد غذائية',
+        'منظفات',
+        'إلكترونيات',
+        'أخرى',
+      ];
+      for (final cat in defaultCategories) {
+        await into(categories).insert(
+          CategoriesCompanion.insert(name: cat),
+        );
+      }
+
+      // 12. حذف المستخدمين الإضافيين والإبقاء على المدير الافتراضي
+      await (delete(users)..where((u) => u.username.isNotValue('admin'))).go();
+      final adminUser = await (select(users)
+            ..where((u) => u.username.equals('admin')))
+          .getSingleOrNull();
+      if (adminUser == null) {
+        await into(users).insert(UsersCompanion.insert(
+          username: 'admin',
+          passwordHash:
+              '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
+          fullName: 'المدير',
+          role: 'admin',
+        ));
+      }
+    });
+  }
 }
+

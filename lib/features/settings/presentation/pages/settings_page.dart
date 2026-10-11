@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../cubit/settings_cubit.dart';
 import '../../domain/entities/settings_entity.dart';
+import '../../../../core/widgets/factory_reset_dialog.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -417,6 +418,53 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 20),
+
+                      // Danger Zone: Factory Reset (ترجيع الكل كما كان)
+                      Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 1.5),
+                        ),
+                        color: AppTheme.error.withValues(alpha: 0.03),
+                        child: Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.warning_amber_rounded, color: AppTheme.error, size: 26),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'منطقة الخطر - تفريغ النظام والبدء من الصفر',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.error),
+                                  ),
+                                ],
+                              ),
+                              const Divider(height: 24),
+                              const Text(
+                                'هذا الزر يقوم بتصفير وحذف جميع البيانات (المنتجات، المخزون، المبيعات، المشتريات، الخزينة، العملاء، والموردين) وتفريغ النظام بالكامل كأنك ستبدأ العمل عليه من الصفر. يتطلب إدخال كلمة مرور المدير للتأكيد.',
+                                style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
+                              ),
+                              const SizedBox(height: 18),
+                              ElevatedButton.icon(
+                                onPressed: () => showFactoryResetDialog(context),
+                                icon: const Icon(Icons.restart_alt_rounded),
+                                label: const Text('ترجيع الكل كما كان (تفريغ النظام بالكامل)'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.error,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 40),
                     ],
                   ),
                 );

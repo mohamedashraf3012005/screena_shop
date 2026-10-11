@@ -10,7 +10,7 @@ class ProductsLocalDatasource {
     String? search,
     int? categoryId,
     int? typeId,
-    String? status,
+    String? status = 'active',
     int page = 1,
     int pageSize = 50,
   }) async {
@@ -31,7 +31,7 @@ class ProductsLocalDatasource {
     if (typeId != null) {
       query.where(_db.products.productTypeId.equals(typeId));
     }
-    if (status != null) {
+    if (status != null && status != 'all') {
       query.where(_db.products.status.equals(status));
     }
 
@@ -120,8 +120,22 @@ class ProductsLocalDatasource {
   }
 
   Future<void> delete(int id) async {
-    await (_db.update(_db.products)..where((p) => p.id.equals(id)))
-        .write(const ProductsCompanion(status: Value('inactive')));
+    // التحقق هل للمنتج فواتير مبيعات أو مشتريات أو مرتجعات
+    final hasSales = (await (_db.select(_db.saleItems)..where((s) => s.productId.equals(id))).get()).isNotEmpty;
+    final hasPurchases = (await (_db.select(_db.purchaseItems)..where((p) => p.productId.equals(id))).get()).isNotEmpty;
+    final hasReturns = (await (_db.select(_db.returnItems)..where((r) => r.productId.equals(id))).get()).isNotEmpty;
+
+    if (!hasSales && !hasPurchases && !hasReturns) {
+      // حذف الحركات المرتبطة والجرد والهالك لحذف المنتج نهائياً من الأساس
+      await (_db.delete(_db.stockAdjustmentItems)..where((a) => a.productId.equals(id))).go();
+      await (_db.delete(_db.stockDamages)..where((d) => d.productId.equals(id))).go();
+      await (_db.delete(_db.inventoryMovements)..where((m) => m.productId.equals(id))).go();
+      await (_db.delete(_db.products)..where((p) => p.id.equals(id))).go();
+    } else {
+      // تعطيل المنتج فقط للحفاظ على نزاهة سجلات الفواتير السابقة
+      await (_db.update(_db.products)..where((p) => p.id.equals(id)))
+          .write(const ProductsCompanion(status: Value('inactive')));
+    }
   }
 
   Future<List<ProductEntity>> getLowStockProducts() async {

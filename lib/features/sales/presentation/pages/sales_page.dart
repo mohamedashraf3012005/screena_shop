@@ -6,6 +6,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../cubit/sales_cubit.dart';
 import '../../domain/entities/sale_entity.dart';
+import '../../../auth/presentation/cubit/auth_cubit.dart';
 
 class SalesPage extends StatefulWidget {
   const SalesPage({super.key});
@@ -322,7 +323,7 @@ class _SalesPageState extends State<SalesPage> {
                                                   tooltip: 'عرض الفاتورة',
                                                   onPressed: () => context.go('${AppRoutes.sales}/${sale.id}'),
                                                 ),
-                                                if (!isCancelled)
+                                                if (!isCancelled && (context.watch<AuthCubit>().currentUser?.canDeleteInvoices ?? true))
                                                   IconButton(
                                                     icon: const Icon(Icons.cancel_outlined, size: 20, color: AppTheme.error),
                                                     tooltip: 'إلغاء الفاتورة واسترجاع البضاعة',

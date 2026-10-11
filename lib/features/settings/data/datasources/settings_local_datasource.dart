@@ -87,4 +87,9 @@ class SettingsLocalDatasource {
       return false;
     }
   }
+
+  Future<bool> verifyAdminPassword(String password) => _db.verifyAdminPassword(password);
+
+  Future<void> factoryReset() => _db.factoryReset();
 }
+

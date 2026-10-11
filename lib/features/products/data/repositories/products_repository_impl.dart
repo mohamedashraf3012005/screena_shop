@@ -11,7 +11,7 @@ class ProductsRepositoryImpl implements ProductsRepository {
     String? search,
     int? categoryId,
     int? typeId,
-    String? status,
+    String? status = 'active',
     int page = 1,
     int pageSize = 50,
   }) =>

@@ -16,9 +16,12 @@ class UserEntity extends Equatable {
   });
 
   bool get isAdmin => role == 'admin';
-  bool get isFinance => role == 'finance' || role == 'admin';
-  bool get isCashier => role == 'cashier' || role == 'admin';
+  bool get isFinance => role == 'finance';
+  bool get isCashier => role == 'cashier';
 
+  bool get canAccessPOS => true;
+  bool get canManageProducts => role == 'admin' || role == 'finance';
+  bool get canDeleteProducts => role == 'admin';
   bool get canDeleteInvoices => role == 'admin';
   bool get canEditStockManually => role == 'admin' || role == 'finance';
   bool get canEditPurchaseCost => role == 'admin' || role == 'finance';
@@ -26,6 +29,8 @@ class UserEntity extends Equatable {
   bool get canViewReports => role == 'admin' || role == 'finance';
   bool get canViewTreasury => role == 'admin' || role == 'finance';
   bool get canManageUsers => role == 'admin';
+  bool get canAccessSettings => role == 'admin';
+  bool get canFactoryReset => role == 'admin';
 
   @override
   List<Object?> get props => [id, username, fullName, role, isActive];

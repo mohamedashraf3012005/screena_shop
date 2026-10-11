@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import '../routing/app_routes.dart';
 import '../../features/auth/presentation/cubit/auth_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'factory_reset_dialog.dart';
 
 class MainLayout extends StatelessWidget {
   final Widget child;
@@ -12,6 +13,51 @@ class MainLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final authCubit = context.watch<AuthCubit>();
+    final user = authCubit.currentUser;
+    final currentPath = GoRouterState.of(context).uri.path;
+
+    // التحقق من صلاحيات المسار للمستخدم الحالي
+    if (user != null) {
+      if (user.role == 'cashier') {
+        final isCashierAllowed = currentPath.startsWith(AppRoutes.sales) ||
+            currentPath.startsWith(AppRoutes.pos) ||
+            currentPath == AppRoutes.products ||
+            currentPath.startsWith(AppRoutes.customers);
+        if (!isCashierAllowed) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) {
+              context.go(AppRoutes.sales);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('غير مصرح لك بالدخول لهذه الصفحة (صلاحيات كاشير فقط)'),
+                  backgroundColor: AppTheme.error,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          });
+        }
+      } else if (user.role == 'finance') {
+        final isFinanceRestricted = currentPath.startsWith(AppRoutes.users) ||
+            currentPath.startsWith(AppRoutes.settings);
+        if (isFinanceRestricted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) {
+              context.go(AppRoutes.dashboard);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('هذه الصفحة مخصصة لمدير النظام فقط'),
+                  backgroundColor: AppTheme.error,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          });
+        }
+      }
+    }
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -45,6 +91,11 @@ class AppSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentLocation = GoRouterState.of(context).uri.path;
+    final authCubit = context.watch<AuthCubit>();
+    final user = authCubit.currentUser;
+    final role = user?.role ?? 'admin';
+    final isCashier = role == 'cashier';
+    final isAdmin = role == 'admin';
 
     return Container(
       width: 230,
@@ -54,99 +105,125 @@ class AppSidebar extends StatelessWidget {
           // لوغو وعنوان
           _buildHeader(context),
           const SizedBox(height: 8),
-          // عناصر القائمة
+          // عناصر القائمة حسب الصلاحية
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               children: [
-                _SidebarItem(
-                  icon: Icons.dashboard_outlined,
-                  label: 'لوحة التحكم',
-                  route: AppRoutes.dashboard,
-                  currentRoute: currentLocation,
-                ),
-                const _SidebarDivider(),
-                const _SidebarSectionLabel('العمليات'),
-                _SidebarItem(
-                  icon: Icons.point_of_sale_outlined,
-                  label: 'المبيعات',
-                  route: AppRoutes.sales,
-                  currentRoute: currentLocation,
-                ),
-                _SidebarItem(
-                  icon: Icons.shopping_cart_outlined,
-                  label: 'المشتريات',
-                  route: AppRoutes.purchases,
-                  currentRoute: currentLocation,
-                ),
-                const _SidebarDivider(),
-                const _SidebarSectionLabel('المخزون'),
-                _SidebarItem(
-                  icon: Icons.inventory_2_outlined,
-                  label: 'المخزون',
-                  route: AppRoutes.inventory,
-                  currentRoute: currentLocation,
-                ),
-                _SidebarItem(
-                  icon: Icons.category_outlined,
-                  label: 'المنتجات',
-                  route: AppRoutes.products,
-                  currentRoute: currentLocation,
-                ),
-                _SidebarItem(
-                  icon: Icons.label_outline,
-                  label: 'التصنيفات',
-                  route: AppRoutes.categories,
-                  currentRoute: currentLocation,
-                ),
-                const _SidebarDivider(),
-                const _SidebarSectionLabel('الأطراف'),
-                _SidebarItem(
-                  icon: Icons.people_outline,
-                  label: 'العملاء',
-                  route: AppRoutes.customers,
-                  currentRoute: currentLocation,
-                ),
-                _SidebarItem(
-                  icon: Icons.local_shipping_outlined,
-                  label: 'الموردين',
-                  route: AppRoutes.suppliers,
-                  currentRoute: currentLocation,
-                ),
-                const _SidebarDivider(),
-                const _SidebarSectionLabel('المالية'),
-                _SidebarItem(
-                  icon: Icons.account_balance_wallet_outlined,
-                  label: 'الخزينة',
-                  route: AppRoutes.treasury,
-                  currentRoute: currentLocation,
-                ),
-                _SidebarItem(
-                  icon: Icons.receipt_long_outlined,
-                  label: 'المصروفات',
-                  route: AppRoutes.expenses,
-                  currentRoute: currentLocation,
-                ),
-                _SidebarItem(
-                  icon: Icons.bar_chart_outlined,
-                  label: 'التقارير',
-                  route: AppRoutes.reports,
-                  currentRoute: currentLocation,
-                ),
-                const _SidebarDivider(),
-                const _SidebarSectionLabel('الإدارة'),
-                _SidebarItem(
-                  icon: Icons.manage_accounts_outlined,
-                  label: 'المستخدمين',
-                  route: AppRoutes.users,
-                  currentRoute: currentLocation,
-                ),
-                _SidebarItem(
-                  icon: Icons.settings_outlined,
-                  label: 'الإعدادات',
-                  route: AppRoutes.settings,
-                  currentRoute: currentLocation,
-                ),
+                if (isCashier) ...[
+                  const _SidebarSectionLabel('نقطة البيع'),
+                  _SidebarItem(
+                    icon: Icons.point_of_sale_outlined,
+                    label: 'المبيعات والكاشير',
+                    route: AppRoutes.sales,
+                    currentRoute: currentLocation,
+                  ),
+                  const _SidebarDivider(),
+                  const _SidebarSectionLabel('الاستعلامات'),
+                  _SidebarItem(
+                    icon: Icons.category_outlined,
+                    label: 'المنتجات والأسعار',
+                    route: AppRoutes.products,
+                    currentRoute: currentLocation,
+                  ),
+                  _SidebarItem(
+                    icon: Icons.people_outline,
+                    label: 'العملاء والحسابات',
+                    route: AppRoutes.customers,
+                    currentRoute: currentLocation,
+                  ),
+                ] else ...[
+                  _SidebarItem(
+                    icon: Icons.dashboard_outlined,
+                    label: 'لوحة التحكم',
+                    route: AppRoutes.dashboard,
+                    currentRoute: currentLocation,
+                  ),
+                  const _SidebarDivider(),
+                  const _SidebarSectionLabel('العمليات'),
+                  _SidebarItem(
+                    icon: Icons.point_of_sale_outlined,
+                    label: 'المبيعات',
+                    route: AppRoutes.sales,
+                    currentRoute: currentLocation,
+                  ),
+                  _SidebarItem(
+                    icon: Icons.shopping_cart_outlined,
+                    label: 'المشتريات',
+                    route: AppRoutes.purchases,
+                    currentRoute: currentLocation,
+                  ),
+                  const _SidebarDivider(),
+                  const _SidebarSectionLabel('المخزون'),
+                  _SidebarItem(
+                    icon: Icons.inventory_2_outlined,
+                    label: 'المخزون',
+                    route: AppRoutes.inventory,
+                    currentRoute: currentLocation,
+                  ),
+                  _SidebarItem(
+                    icon: Icons.category_outlined,
+                    label: 'المنتجات',
+                    route: AppRoutes.products,
+                    currentRoute: currentLocation,
+                  ),
+                  _SidebarItem(
+                    icon: Icons.label_outline,
+                    label: 'التصنيفات',
+                    route: AppRoutes.categories,
+                    currentRoute: currentLocation,
+                  ),
+                  const _SidebarDivider(),
+                  const _SidebarSectionLabel('الأطراف'),
+                  _SidebarItem(
+                    icon: Icons.people_outline,
+                    label: 'العملاء',
+                    route: AppRoutes.customers,
+                    currentRoute: currentLocation,
+                  ),
+                  _SidebarItem(
+                    icon: Icons.local_shipping_outlined,
+                    label: 'الموردين',
+                    route: AppRoutes.suppliers,
+                    currentRoute: currentLocation,
+                  ),
+                  const _SidebarDivider(),
+                  const _SidebarSectionLabel('المالية'),
+                  _SidebarItem(
+                    icon: Icons.account_balance_wallet_outlined,
+                    label: 'الخزينة',
+                    route: AppRoutes.treasury,
+                    currentRoute: currentLocation,
+                  ),
+                  _SidebarItem(
+                    icon: Icons.receipt_long_outlined,
+                    label: 'المصروفات',
+                    route: AppRoutes.expenses,
+                    currentRoute: currentLocation,
+                  ),
+                  _SidebarItem(
+                    icon: Icons.bar_chart_outlined,
+                    label: 'التقارير',
+                    route: AppRoutes.reports,
+                    currentRoute: currentLocation,
+                  ),
+                  if (isAdmin) ...[
+                    const _SidebarDivider(),
+                    const _SidebarSectionLabel('الإدارة'),
+                    _SidebarItem(
+                      icon: Icons.manage_accounts_outlined,
+                      label: 'المستخدمين',
+                      route: AppRoutes.users,
+                      currentRoute: currentLocation,
+                    ),
+                    _SidebarItem(
+                      icon: Icons.settings_outlined,
+                      label: 'الإعدادات',
+                      route: AppRoutes.settings,
+                      currentRoute: currentLocation,
+                    ),
+                  ],
+                ],
               ],
             ),
           ),
@@ -205,33 +282,72 @@ class AppSidebar extends StatelessWidget {
   }
 
   Widget _buildFooter(BuildContext context) {
+    final user = context.watch<AuthCubit>().currentUser;
+    final isAdmin = user == null || user.isAdmin;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: Color(0xFF2D3A4E))),
       ),
-      child: InkWell(
-        onTap: () {
-          context.read<AuthCubit>().logout();
-          context.go(AppRoutes.login);
-        },
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: const Row(
-            children: [
-              Icon(Icons.logout, color: AppTheme.sidebarItem, size: 18),
-              SizedBox(width: 10),
-              Text(
-                'تسجيل الخروج',
-                style: TextStyle(
-                  color: AppTheme.sidebarItem,
-                  fontSize: 13,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isAdmin) ...[
+            InkWell(
+              onTap: () => showFactoryResetDialog(context),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppTheme.error.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.error.withValues(alpha: 0.35)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.restart_alt_rounded, color: AppTheme.error, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'ترجيع الكل كما كان',
+                        style: TextStyle(
+                          color: AppTheme.error,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
+            const SizedBox(height: 8),
+          ],
+          InkWell(
+            onTap: () {
+              context.read<AuthCubit>().logout();
+              context.go(AppRoutes.login);
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: const Row(
+                children: [
+                  Icon(Icons.logout, color: AppTheme.sidebarItem, size: 18),
+                  SizedBox(width: 10),
+                  Text(
+                    'تسجيل الخروج',
+                    style: TextStyle(
+                      color: AppTheme.sidebarItem,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -474,22 +590,52 @@ class AppTopBar extends StatelessWidget {
   Widget _buildUserInfo(BuildContext context) {
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, state) {
-        final userName = state is AuthAuthenticated ? state.user.fullName : 'المستخدم';
+        final user = state is AuthAuthenticated ? state.user : null;
+        final userName = user?.fullName ?? 'المستخدم';
+        final role = user?.role ?? 'admin';
+
+        String roleText = 'مدير عام';
+        Color roleColor = Colors.purple;
+        if (role == 'cashier') {
+          roleText = 'كاشير';
+          roleColor = Colors.blue;
+        } else if (role == 'finance') {
+          roleText = 'محاسب';
+          roleColor = Colors.teal;
+        }
+
         return Row(
           children: [
             Container(
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: AppTheme.primaryLight.withValues(alpha: 0.15),
+                color: roleColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.person_outline, size: 18, color: AppTheme.primary),
+              child: Icon(Icons.person_outline, size: 18, color: roleColor),
             ),
             const SizedBox(width: 8),
-            Text(
-              userName,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  userName,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: roleColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    roleText,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: roleColor),
+                  ),
+                ),
+              ],
             ),
           ],
         );

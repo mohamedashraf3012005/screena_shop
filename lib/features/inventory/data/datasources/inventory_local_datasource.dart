@@ -259,4 +259,56 @@ class InventoryLocalDatasource {
             ))
         .toList();
   }
+
+  // إضافة أو تعديل المخزون يدوياً
+  Future<bool> manualStockAdjustment({
+    required int productId,
+    required double quantityDelta,
+    required String reason,
+    String? notes,
+    int? userId,
+    double? newCostPrice,
+  }) async {
+    return await _db.transaction(() async {
+      final product = await (_db.select(_db.products)..where((p) => p.id.equals(productId))).getSingle();
+      final beforeQty = product.currentQuantity;
+      final afterQty = beforeQty + quantityDelta;
+
+      double newWeightedAvg = product.weightedAvgCost;
+      if (newCostPrice != null && quantityDelta > 0) {
+        final totalExistingCost = product.currentQuantity * product.weightedAvgCost;
+        final newCost = quantityDelta * newCostPrice;
+        final totalQuantity = product.currentQuantity + quantityDelta;
+        if (totalQuantity > 0) {
+          newWeightedAvg = (totalExistingCost + newCost) / totalQuantity;
+        }
+      }
+
+      await (_db.update(_db.products)..where((p) => p.id.equals(productId))).write(
+        ProductsCompanion(
+          currentQuantity: Value(afterQty),
+          weightedAvgCost: Value(newWeightedAvg),
+          costPrice: newCostPrice != null ? Value(newCostPrice) : const Value.absent(),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+
+      await _db.into(_db.inventoryMovements).insert(
+        InventoryMovementsCompanion.insert(
+          productId: productId,
+          movementType: quantityDelta >= 0 ? 'manual_add' : 'manual_remove',
+          quantity: quantityDelta,
+          costPrice: Value(newCostPrice ?? product.costPrice),
+          quantityBefore: Value(beforeQty),
+          quantityAfter: Value(afterQty),
+          reason: Value(reason),
+          notes: Value(notes),
+          userId: Value(userId),
+        ),
+      );
+
+      return true;
+    });
+  }
 }
+

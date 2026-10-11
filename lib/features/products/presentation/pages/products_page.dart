@@ -7,6 +7,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../core/di/injection_container.dart';
 import '../cubit/products_cubit.dart';
 import '../../domain/entities/product_entity.dart';
+import '../../../auth/presentation/cubit/auth_cubit.dart';
 
 class ProductsPage extends StatelessWidget {
   const ProductsPage({super.key});
@@ -55,6 +56,9 @@ class _ProductsViewState extends State<_ProductsView> {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final user = context.watch<AuthCubit>().currentUser;
+    final canManage = user == null || !user.isCashier;
+
     return Row(
       children: [
         const Column(
@@ -71,11 +75,12 @@ class _ProductsViewState extends State<_ProductsView> {
           ],
         ),
         const Spacer(),
-        ElevatedButton.icon(
-          onPressed: () => context.go(AppRoutes.productAdd),
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('إضافة منتج'),
-        ),
+        if (canManage)
+          ElevatedButton.icon(
+            onPressed: () => context.go(AppRoutes.productAdd),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('إضافة منتج'),
+          ),
       ],
     );
   }
@@ -315,24 +320,33 @@ class _ProductRowState extends State<_ProductRow> {
             SizedBox(
               width: 80,
               child: _isHovered
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _ActionButton(
-                          icon: Icons.edit_outlined,
-                          tooltip: 'تعديل',
-                          onTap: () => context.go(
-                              '/products/${p.id}/edit'),
-                        ),
-                        const SizedBox(width: 4),
-                        _ActionButton(
-                          icon: Icons.delete_outline,
-                          tooltip: 'حذف',
-                          color: AppTheme.error,
-                          onTap: () => _confirmDelete(context),
-                        ),
-                      ],
-                    )
+                  ? Builder(builder: (ctx) {
+                      final user = ctx.watch<AuthCubit>().currentUser;
+                      final canManage = user == null || !user.isCashier;
+                      if (!canManage) {
+                        return const Center(
+                          child: Text('عرض فقط', style: TextStyle(fontSize: 11, color: AppTheme.textHint)),
+                        );
+                      }
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _ActionButton(
+                            icon: Icons.edit_outlined,
+                            tooltip: 'تعديل',
+                            onTap: () => context.go(
+                                '/products/${p.id}/edit'),
+                          ),
+                          const SizedBox(width: 4),
+                          _ActionButton(
+                            icon: Icons.delete_outline,
+                            tooltip: 'حذف',
+                            color: AppTheme.error,
+                            onTap: () => _confirmDelete(context),
+                          ),
+                        ],
+                      );
+                    })
                   : const SizedBox(),
             ),
           ],
@@ -394,7 +408,7 @@ class _ProductRowState extends State<_ProductRow> {
       context: context,
       builder: (dlgCtx) => AlertDialog(
         title: const Text('حذف المنتج'),
-        content: Text('هل تريد حذف "${widget.product.name}"؟'),
+        content: Text('هل تريد حذف "${widget.product.name}"؟\nسيتم حذف المنتج نهائياً من النظام.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dlgCtx, false),
@@ -404,13 +418,21 @@ class _ProductRowState extends State<_ProductRow> {
             onPressed: () => Navigator.pop(dlgCtx, true),
             style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.error),
-            child: const Text('حذف'),
+            child: const Text('تأكيد الحذف'),
           ),
         ],
       ),
     );
     if (confirmed == true && mounted) {
-      await cubit.deleteProduct(widget.product.id);
+      final success = await cubit.deleteProduct(widget.product.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? 'تم حذف المنتج بنجاح' : 'تعذر حذف المنتج'),
+            backgroundColor: success ? AppTheme.success : AppTheme.error,
+          ),
+        );
+      }
     }
   }
 }

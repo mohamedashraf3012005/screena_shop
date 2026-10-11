@@ -6,6 +6,9 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/utils/formatters.dart';
 import '../cubit/inventory_cubit.dart';
+import '../../../products/domain/entities/product_entity.dart';
+import '../../../products/presentation/cubit/products_cubit.dart';
+import '../../../auth/presentation/cubit/auth_cubit.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -70,6 +73,24 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
                 ),
                 Row(
                   children: [
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        final invState = context.read<InventoryCubit>().state;
+                        final products = invState is InventoryLoaded ? invState.allProducts : <ProductEntity>[];
+                        _showManualStockDialog(context, allProducts: products);
+                      },
+                      icon: const Icon(Icons.add_box_rounded),
+                      label: const Text('إضافة / زيادة رصيد يدوي'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.success,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     OutlinedButton.icon(
                       onPressed: () => context.go(AppRoutes.stockDamage),
                       icon: const Icon(Icons.delete_sweep_outlined, color: AppTheme.error),
@@ -568,6 +589,22 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Tooltip(
+                                        message: 'إضافة أو زيادة رصيد هذا الصنف يدوياً',
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(6),
+                                          onTap: () => _showManualStockDialog(context, product: p),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.success.withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Icon(Icons.add_circle_outline, size: 16, color: AppTheme.success),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Tooltip(
                                         message: 'عرض سجل حركات هذا الصنف في المخزن',
                                         child: InkWell(
                                           borderRadius: BorderRadius.circular(6),
@@ -950,6 +987,17 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           ElevatedButton.icon(
+                            onPressed: () => _showManualStockDialog(context, product: p),
+                            icon: const Icon(Icons.add_circle, size: 16),
+                            label: const Text('زيادة رصيد يدوي'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.success,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          ElevatedButton.icon(
                             onPressed: () => context.go(AppRoutes.purchaseAdd),
                             icon: const Icon(Icons.add_shopping_cart, size: 16),
                             label: const Text('طلب شراء'),
@@ -959,7 +1007,7 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           IconButton(
                             icon: const Icon(Icons.swap_vert, size: 18),
                             tooltip: 'سجل حركات الصنف',
@@ -1039,6 +1087,303 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // نافذة إضافة وتعديل المخزون يدوياً
+  // ─────────────────────────────────────────────
+  Future<void> _showManualStockDialog(
+    BuildContext context, {
+    ProductEntity? product,
+    List<ProductEntity> allProducts = const [],
+  }) async {
+    final invCubit = context.read<InventoryCubit>();
+    final prodCubit = context.read<ProductsCubit>();
+    final user = context.read<AuthCubit>().currentUser;
+
+    ProductEntity? selectedProduct = product;
+    if (selectedProduct == null && allProducts.isNotEmpty) {
+      selectedProduct = allProducts.first;
+    }
+
+    final qtyController = TextEditingController();
+    final reasonController = TextEditingController(text: 'إضافة بضاعة واردة');
+    final notesController = TextEditingController();
+    int adjustmentMode = 0; // 0 = إضافة (+), 1 = تعيين الرصيد الإجمالي (=), 2 = صرف / إنقاص (-)
+
+    await showDialog(
+      context: context,
+      builder: (dlgContext) => StatefulBuilder(
+        builder: (context, setDlgState) {
+          final currentQty = selectedProduct?.currentQuantity ?? 0.0;
+          final unit = selectedProduct?.unit ?? 'قطعة';
+
+          double enteredVal = double.tryParse(qtyController.text) ?? 0.0;
+          double resultingQty = currentQty;
+          if (adjustmentMode == 0) {
+            resultingQty = currentQty + enteredVal;
+          } else if (adjustmentMode == 1) {
+            resultingQty = enteredVal;
+          } else if (adjustmentMode == 2) {
+            resultingQty = currentQty - enteredVal;
+          }
+
+          return AlertDialog(
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.inventory_2_rounded, color: AppTheme.success, size: 22),
+                ),
+                const SizedBox(width: 10),
+                const Text('إضافة أو تعديل رصيد المخزون يدوياً', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: SizedBox(
+              width: 520,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Product Selection
+                    if (product == null && allProducts.isNotEmpty) ...[
+                      const Text('اختر الصنف المطلوب:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<ProductEntity>(
+                        initialValue: selectedProduct,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        items: allProducts.map((p) => DropdownMenuItem(
+                          value: p,
+                          child: Text('${p.name} (الرصيد الحالي: ${p.currentQuantity.toStringAsFixed(0)} ${p.unit})'),
+                        )).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setDlgState(() {
+                              selectedProduct = val;
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                    ] else if (selectedProduct != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.background,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.border),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(selectedProduct!.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                if (selectedProduct!.barcode != null && selectedProduct!.barcode!.isNotEmpty)
+                                  Text('الباركود: ${selectedProduct!.barcode}', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                              ],
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'الرصيد الحالي: ${currentQty.toStringAsFixed(0)} $unit',
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Mode Selection Segmented
+                    const Text('نوع العملية:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment(value: 0, label: Text('إضافة كمية (+)'), icon: Icon(Icons.add, size: 16)),
+                        ButtonSegment(value: 1, label: Text('تحديد الرصيد (=)'), icon: Icon(Icons.edit, size: 16)),
+                        ButtonSegment(value: 2, label: Text('صرف كمية (-)'), icon: Icon(Icons.remove, size: 16)),
+                      ],
+                      selected: {adjustmentMode},
+                      onSelectionChanged: (set) {
+                        setDlgState(() => adjustmentMode = set.first);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Quantity Input
+                    Text(
+                      adjustmentMode == 0
+                          ? 'الكمية المراد إضافتها للمخزن بالقطع:'
+                          : adjustmentMode == 1
+                              ? 'الرصيد الإجمالي الفعلي الجديد:'
+                              : 'الكمية المراد صرفها/خصمها من المخزن:',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: qtyController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        border: const OutlineInputBorder(),
+                        suffixText: unit,
+                        hintText: '0',
+                      ),
+                      onChanged: (_) => setDlgState(() {}),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Quick Chips
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [1, 5, 10, 20, 50, 100].map((step) {
+                        return ActionChip(
+                          label: Text('+$step'),
+                          onPressed: () {
+                            final cur = double.tryParse(qtyController.text) ?? 0.0;
+                            qtyController.text = (cur + step).toStringAsFixed(0);
+                            setDlgState(() {});
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Resulting Preview Box
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: (resultingQty >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: (resultingQty >= 0 ? AppTheme.success : AppTheme.error).withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('الرصيد الجديد بعد التعديل:', style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text(
+                            '${resultingQty.toStringAsFixed(0)} $unit',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: resultingQty >= 0 ? AppTheme.success : AppTheme.error,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Reason Selector
+                    const Text('سبب الإضافة / التعديل:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      initialValue: reasonController.text,
+                      isExpanded: true,
+                      decoration: const InputDecoration(border: OutlineInputBorder()),
+                      items: const [
+                        DropdownMenuItem(value: 'إضافة بضاعة واردة', child: Text('إضافة بضاعة واردة')),
+                        DropdownMenuItem(value: 'تعديل رصيد يدوي', child: Text('تعديل رصيد يدوي')),
+                        DropdownMenuItem(value: 'رصيد بضاعة أول المدة', child: Text('رصيد بضاعة أول المدة')),
+                        DropdownMenuItem(value: 'مشتريات غير مسجلة بفاتورة', child: Text('مشتريات غير مسجلة بفاتورة')),
+                        DropdownMenuItem(value: 'تسوية سريعة', child: Text('تسوية سريعة')),
+                        DropdownMenuItem(value: 'صرف عينات أو هدايا', child: Text('صرف عينات أو هدايا')),
+                        DropdownMenuItem(value: 'أخرى', child: Text('أخرى')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setDlgState(() => reasonController.text = v);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Notes
+                    const Text('ملاحظات إضافية (اختياري):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: notesController,
+                      decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'أي ملاحظات تخص هذه الحركة...'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dlgContext), child: const Text('إلغاء')),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  if (selectedProduct == null) return;
+                  final entered = double.tryParse(qtyController.text);
+                  if (entered == null || entered <= 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('يرجى إدخال كمية صحيحة أكبر من صفر'), backgroundColor: AppTheme.error),
+                    );
+                    return;
+                  }
+
+                  double delta = 0.0;
+                  if (adjustmentMode == 0) {
+                    delta = entered;
+                  } else if (adjustmentMode == 1) {
+                    delta = entered - currentQty;
+                  } else if (adjustmentMode == 2) {
+                    delta = -entered;
+                  }
+
+                  if (delta == 0) {
+                    Navigator.pop(dlgContext);
+                    return;
+                  }
+
+                  final success = await invCubit.manualStockAdjustment(
+                    productId: selectedProduct!.id,
+                    quantityDelta: delta,
+                    reason: reasonController.text.trim(),
+                    notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+                    userId: user?.id,
+                  );
+
+                  if (context.mounted) {
+                    Navigator.pop(dlgContext);
+                    if (success) {
+                      await prodCubit.loadProducts();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('تم تحديث رصيد الصنف "${selectedProduct!.name}" بنجاح إلى ${resultingQty.toStringAsFixed(0)} $unit'),
+                          backgroundColor: AppTheme.success,
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('حدث خطأ أثناء تعديل المخزون'), backgroundColor: AppTheme.error),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('حفظ وتحديث الرصيد'),
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

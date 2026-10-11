@@ -17,4 +17,16 @@ class SettingsRepositoryImpl implements SettingsRepository {
 
   @override
   Future<bool> restoreDatabase(String sourceFilePath) => _datasource.restoreDatabase(sourceFilePath);
+
+  @override
+  Future<bool> verifyAdminPassword(String password) => _datasource.verifyAdminPassword(password);
+
+  @override
+  Future<bool> factoryReset(String password) async {
+    final valid = await _datasource.verifyAdminPassword(password);
+    if (!valid) return false;
+    await _datasource.factoryReset();
+    return true;
+  }
 }
+

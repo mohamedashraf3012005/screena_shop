@@ -66,4 +66,17 @@ class SettingsCubit extends Cubit<SettingsState> {
       return false;
     }
   }
+
+  Future<bool> factoryReset(String password) async {
+    try {
+      final success = await _repository.factoryReset(password);
+      if (success) {
+        await loadSettings();
+      }
+      return success;
+    } catch (_) {
+      return false;
+    }
+  }
 }
+

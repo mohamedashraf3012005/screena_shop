@@ -22,6 +22,10 @@ import 'package:escrena/features/expenses/domain/entities/expense_entity.dart';
 import 'package:escrena/features/inventory/data/datasources/inventory_local_datasource.dart';
 import 'package:escrena/features/inventory/data/repositories/inventory_repository_impl.dart';
 import 'package:escrena/features/inventory/presentation/cubit/inventory_cubit.dart';
+import 'package:escrena/features/settings/data/datasources/settings_local_datasource.dart';
+import 'package:escrena/features/settings/data/repositories/settings_repository_impl.dart';
+import 'package:escrena/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:escrena/features/auth/domain/entities/user_entity.dart';
 
 void main() {
   late AppDatabase db;
@@ -392,5 +396,221 @@ void main() {
     expect(invState.filteredProductName, equals('شاشة حماية زجاجية للمخزن'));
     expect(invState.movements.length, equals(1));
   });
+
+  test('Comprehensive Test: Manual Stock Addition and Adjustment (إضافة وزيادة المخزون يدوياً)', () async {
+    // 1. Create a product
+    final prodId = await prodDatasource.create(ProductEntity(
+      id: 0,
+      name: 'كابل شحن تايب سي سريع',
+      barcode: '1122334455',
+      unit: 'قطعة',
+      currentQuantity: 10,
+      minQuantity: 5,
+      costPrice: 50,
+      sellPrice: 100,
+      groupPrice: 90,
+      groupQuantity: 1,
+      weightedAvgCost: 50,
+      status: 'active',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    ));
+
+    // 2. Perform manual stock increase (+25 pieces)
+    final addSuccess = await invCubit.manualStockAdjustment(
+      productId: prodId,
+      quantityDelta: 25,
+      reason: 'إضافة بضاعة واردة إضافية',
+      notes: 'استلام دفعة جديدة يدوياً',
+    );
+    expect(addSuccess, isTrue);
+
+    // 3. Verify product current quantity is now 35
+    final updatedProd = await prodCubit.getById(prodId);
+    expect(updatedProd, isNotNull);
+    expect(updatedProd!.currentQuantity, equals(35));
+
+    // 4. Verify inventory movement record was logged as manual_add
+    final movements = await db.select(db.inventoryMovements).get();
+    final manualMov = movements.firstWhere((m) => m.productId == prodId && m.movementType == 'manual_add');
+    expect(manualMov.quantity, equals(25));
+    expect(manualMov.quantityBefore, equals(10));
+    expect(manualMov.quantityAfter, equals(35));
+    expect(manualMov.reason, equals('إضافة بضاعة واردة إضافية'));
+
+    // 5. Perform manual stock deduction (-5 pieces)
+    final deductSuccess = await invCubit.manualStockAdjustment(
+      productId: prodId,
+      quantityDelta: -5,
+      reason: 'صرف عينات للتجربة',
+    );
+    expect(deductSuccess, isTrue);
+
+    final finalProd = await prodCubit.getById(prodId);
+    expect(finalProd!.currentQuantity, equals(30));
+  });
+
+  test('Comprehensive Test: Product Deletion from root (حذف المنتج من الأساس)', () async {
+    // 1. Create product without sales
+    final prodId = await prodDatasource.create(ProductEntity(
+      id: 0,
+      name: 'منتج تجريبي للحذف',
+      barcode: '7788990011',
+      unit: 'قطعة',
+      currentQuantity: 5,
+      minQuantity: 1,
+      costPrice: 20,
+      sellPrice: 40,
+      groupPrice: 35,
+      groupQuantity: 1,
+      weightedAvgCost: 20,
+      status: 'active',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    ));
+
+    // 2. Delete product from root
+    final deleteResult = await prodCubit.deleteProduct(prodId);
+    expect(deleteResult, isTrue);
+
+    // 3. Product must be completely gone from products table (hard deleted because no sales/purchases)
+    final fetched = await prodCubit.getById(prodId);
+    expect(fetched, isNull);
+
+    // 4. Also verify it does not appear in loadProducts
+    await prodCubit.loadProducts();
+    final state = prodCubit.state as ProductsLoaded;
+    expect(state.products.any((p) => p.id == prodId), isFalse);
+  });
+
+  test('Comprehensive Test: Factory Reset (ترجيع الكل كما كان)', () async {
+    // 1. Set up SettingsCubit
+    final settingsDs = SettingsLocalDatasource(db);
+    final settingsRepo = SettingsRepositoryImpl(settingsDs);
+    final settingsCubit = SettingsCubit(settingsRepo);
+
+    // 2. Populate some data: product, customer, expense
+    await prodDatasource.create(ProductEntity(
+      id: 0,
+      name: 'منتج سيتم حذفه في تصفير النظام',
+      barcode: '999888',
+      unit: 'قطعة',
+      currentQuantity: 100,
+      minQuantity: 10,
+      costPrice: 50,
+      sellPrice: 80,
+      groupPrice: 70,
+      groupQuantity: 1,
+      weightedAvgCost: 50,
+      status: 'active',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    ));
+    await custDatasource.create(CustomerEntity(
+      id: 0,
+      name: 'عميل سيتم حذفه',
+      phone: '01000000000',
+      totalBalance: 500,
+      isActive: true,
+      createdAt: DateTime.now(),
+    ));
+    await expDatasource.createExpense(ExpenseEntity(
+      id: 0,
+      category: 'كهرباء',
+      description: 'فاتورة الكهرباء',
+      amount: 300,
+      paymentMethod: 'cash',
+      expenseDate: DateTime.now(),
+      createdAt: DateTime.now(),
+    ));
+
+    // Verify data exists
+    final prodsBefore = await prodDatasource.getAll(status: 'all');
+    expect(prodsBefore.isNotEmpty, isTrue);
+
+    // 3. Attempt reset with wrong password -> should fail
+    final wrongPassResult = await settingsCubit.factoryReset('wrong_password');
+    expect(wrongPassResult, isFalse);
+
+    // Verify data was NOT deleted
+    final prodsAfterFailed = await prodDatasource.getAll(status: 'all');
+    expect(prodsAfterFailed.isNotEmpty, isTrue);
+
+    // 4. Perform factory reset with correct admin password (admin123)
+    final success = await settingsCubit.factoryReset('admin123');
+    expect(success, isTrue);
+
+    // 5. Verify system is now completely empty (0 products, 0 customers, 0 expenses, 0 cash)
+    final prodsAfterReset = await prodDatasource.getAll(status: 'all');
+    expect(prodsAfterReset.isEmpty, isTrue);
+
+    final custsAfterReset = await custDatasource.getAll();
+    expect(custsAfterReset.isEmpty, isTrue);
+
+    final expsAfterReset = await expDatasource.getAllExpenses();
+    expect(expsAfterReset.isEmpty, isTrue);
+
+    final cashBalance = await db.getCurrentCashBalance();
+    expect(cashBalance, equals(0.0));
+  });
+
+  test('Comprehensive Test: User Permissions (صلاحيات المستخدمين)', () {
+    const admin = UserEntity(
+      id: 1,
+      username: 'admin',
+      fullName: 'مدير عام',
+      role: 'admin',
+      isActive: true,
+    );
+    const cashier = UserEntity(
+      id: 2,
+      username: 'cashier1',
+      fullName: 'كاشير المحل',
+      role: 'cashier',
+      isActive: true,
+    );
+    const finance = UserEntity(
+      id: 3,
+      username: 'accountant',
+      fullName: 'محاسب الشركة',
+      role: 'finance',
+      isActive: true,
+    );
+
+    // Admin permissions
+    expect(admin.isAdmin, isTrue);
+    expect(admin.canManageUsers, isTrue);
+    expect(admin.canAccessSettings, isTrue);
+    expect(admin.canFactoryReset, isTrue);
+    expect(admin.canDeleteInvoices, isTrue);
+    expect(admin.canDeleteProducts, isTrue);
+    expect(admin.canEditStockManually, isTrue);
+
+    // Cashier permissions
+    expect(cashier.isCashier, isTrue);
+    expect(cashier.isAdmin, isFalse);
+    expect(cashier.isFinance, isFalse);
+    expect(cashier.canAccessPOS, isTrue);
+    expect(cashier.canManageUsers, isFalse);
+    expect(cashier.canAccessSettings, isFalse);
+    expect(cashier.canFactoryReset, isFalse);
+    expect(cashier.canDeleteInvoices, isFalse);
+    expect(cashier.canDeleteProducts, isFalse);
+    expect(cashier.canEditStockManually, isFalse);
+    expect(cashier.canViewReports, isFalse);
+    expect(cashier.canViewTreasury, isFalse);
+
+    // Finance permissions
+    expect(finance.isFinance, isTrue);
+    expect(finance.isAdmin, isFalse);
+    expect(finance.isCashier, isFalse);
+    expect(finance.canViewReports, isTrue);
+    expect(finance.canViewTreasury, isTrue);
+    expect(finance.canEditStockManually, isTrue);
+    expect(finance.canManageUsers, isFalse);
+    expect(finance.canAccessSettings, isFalse);
+    expect(finance.canFactoryReset, isFalse);
+  });
 }
+
 
